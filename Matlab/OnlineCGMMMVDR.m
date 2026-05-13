@@ -122,19 +122,20 @@ classdef OnlineCGMMMVDR < handle
             l_py        = l - 1;
             is_noise    = (l_py < obj.beg_noise) || (l_py > T - obj.end_noise);
 
-            % ---- NOTE on Lambda_kn_prev / Lambda_n_prev ----
-            % In Python:  self.Lambda_kn_prev, self.Lambda_n_prev = self.Lambda_kn, self.Lambda_n
-            % This is a shared-reference assignment, NOT a copy.
-            % _update_masks then does:  self.Lambda_kn += self.lambda_kn  (in-place)
-            % Because Lambda_kn_prev IS the same object as Lambda_kn, Lambda_kn_prev
-            % is ALSO updated.  As a result, in _update_R: nom == denom => forgetting = 1.
-            % We replicate this exactly: save prev AFTER masks are updated.
+            % ---- CRITICAL FIX: save Lambda_prev BEFORE accumulation ----
+            % The original Python code has a shared-reference alias bug:
+            %   self.Lambda_kn_prev, self.Lambda_n_prev = self.Lambda_kn, self.Lambda_n
+            % Because Python uses reference semantics for arrays, Lambda_prev
+            % ends up pointing at the same object as Lambda.  After the in-place
+            % "+=" inside _update_masks, Lambda_prev == Lambda, so in _update_R
+            % nom == denom and the forgetting term is exactly 1 — R is never
+            % updated from the prior and the CGMM never learns.
+            %
+            % Fix: capture copies of Lambda BEFORE the mask update.
+            obj.Lambda_kn_prev = obj.Lambda_kn;  % copy (MATLAB value semantics)
+            obj.Lambda_n_prev  = obj.Lambda_n;
 
             obj.update_masks(y, is_noise);
-
-            % Assign prev AFTER mask update → prev == current  (matches Python behaviour)
-            obj.Lambda_kn_prev = obj.Lambda_kn;
-            obj.Lambda_n_prev  = obj.Lambda_n;
 
             obj.update_phi(y);
             obj.update_R(y);
