@@ -112,6 +112,12 @@ function config = zoom_config()
 %         } ...
 %     );
 
+    % --- Actual source locations (used to highlight bars in spatial plots) ----
+    %   List the names of focus points where real audio sources are present.
+    %   These bars will be drawn in red; all others in blue.
+    %   Set to {} to use the default 'Center' highlight.
+    config.source_points = {'Right-Center', 'Left-Center'};
+
     % --- Energy analysis window ------------------------------------------------
     config.energy_window_ms = 100;
 
