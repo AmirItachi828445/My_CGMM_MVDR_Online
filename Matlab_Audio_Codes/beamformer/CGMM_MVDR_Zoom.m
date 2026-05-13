@@ -92,7 +92,7 @@ ny_k      = 10;
 ny_n      = 10;
 %   10 % of frames forced as noise-only (gives a clean noise reference
 %   before the algorithm has learned the spatial distributions).
-beg_noise = max(1, floor(0.10 * T_frames));
+beg_noise = max(1, floor(0.10 * T_frames));  % 10% noise-only frames
 end_noise = 0;
 
 %% ── Initialise CGMM state ───────────────────────────────────────────────
@@ -113,11 +113,11 @@ alpha_n   = 0.5 * ones(F, 1);
 Phi_n = zeros(F, N_mics, N_mics, 'like', 1+1i);
 
 %% ── Online CGMM loop — vectorised over F ────────────────────────────────
-%   Analytical log-likelihood (exact for zero-mean complex Gaussian):
+%   Analytical log-likelihood for the zero-mean complex Gaussian:
 %     log p(f) = −C·(1+log π) − C·log φ(f) − log|det R(f)|
-%   where φ(f) = (1/C) · y_f^H · R^{-1}(f) · y_f.
-%   The quadratic form y^H Σ^{-1} y = y^H (φR)^{-1} y = C always, so
-%   the Cholesky per frame is completely eliminated.
+%   where φ(f) = (1/C)·y_f^H·R^{-1}(f)·y_f  (ML estimate per frame).
+%   Since Σ = φ·R, the quadratic y^H·Σ^{-1}·y = y^H·R^{-1}·y / φ = C
+%   (by the ML definition of φ), so no Cholesky is needed per frame.
 C_lnpi = N_mics * (1 + log(pi));   % constant part of log-likelihood
 
 for t = 1:T_frames
@@ -363,7 +363,7 @@ function [R_new, R_inv_new, ld_new] = cgmm_R_sm_update( ...
 
         % Sherman-Morrison rank-1 inverse update
         ba       = b / a;
-        s        = real(yf' * u);    % y^H·R^{-1}·y  (= phi·C)
+        s        = real(yf' * u);    % y^H·R^{-1}·y  (numerically = phi·C since phi = s/C)
         denom_sm = 1 + ba * s;
 
         if denom_sm > 1e-10
