@@ -154,10 +154,13 @@ angles_el = linspace(-30, 30, 3);   % elevation degrees
 [AZ, EL]  = meshgrid(angles_az, angles_el);
 AZ = AZ(:); EL = EL(:);
 
-% Convert to Cartesian (range = 2 m, array centred at array centre)
+% Convert spherical (az, el) to Cartesian at range r = 2 m, centred on array.
+% Standard convention:  x = r*cos(el)*cos(az)
+%                       y = r*cos(el)*sin(az)
+%                       z = r*sin(el)
 array_centre = mean(mic_pos, 1);
 r = 2.0;
-focus_points = [r*cosd(EL).*sind(AZ), r*sind(EL), r*cosd(EL).*cosd(AZ)];
+focus_points = [r*cosd(EL).*cosd(AZ), r*cosd(EL).*sind(AZ), r*sind(EL)];
 focus_points = focus_points + repmat(array_centre, 9, 1);
 
 fprintf('Focus points:\n');
@@ -207,7 +210,7 @@ xlabel('Focus point index');
 ylabel('Output power [dBfs²]');
 title('CGMM-MVDR output power at each focus point (4×4 array, 9 focus points)');
 xticks(1:9);
-xticklabels(arrayfun(@(k) sprintf('fp%d\n(az%+.0f°)', k, AZ(k)), 1:9, ...
+xticklabels(arrayfun(@(k) sprintf('fp%d\naz%+.0f° el%+.0f°', k, AZ(k), EL(k)), 1:9, ...
     'UniformOutput', false));
 grid on;
 drawnow;

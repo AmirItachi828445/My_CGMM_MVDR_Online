@@ -265,6 +265,9 @@ classdef OnlineCGMMMVDR < handle
                 M   = reshape(obj.RR_y_inv(f, :, :), obj.C, obj.C);
                 yf  = y(:, f);
                 My  = M * yf;                            % (C,1)
+                % y^H * M * y is real for Hermitian M; real() removes
+                % tiny floating-point imaginary artefacts that accumulate
+                % over frames as M departs slightly from exact Hermitian symmetry.
                 d   = 1 + real(yf' * My);                % scalar
                 nom = My * (yf' * M);                    % (C,C) outer product
                 obj.RR_y_inv(f, :, :) = M - nom / d;

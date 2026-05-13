@@ -22,20 +22,29 @@ for f = 1:F
     Sigma = phi(f) * Rf;
     yf    = y(:, f);
 
+    % Use Cholesky decomposition: Sigma = L*L^H (Hermitian PD)
+    % This is ~2x faster and more numerically stable than LU for this case.
     % Log-domain computation for numerical stability:
     %   log p = -(y^H * Sigma^{-1} * y) - C*log(pi) - log|det(Sigma)|
+    %         = -(||L^{-1} y||^2) - C*log(pi) - 2*sum(log|diag(L)|)
     try
-        % Quadratic form:  y^H * Sigma^{-1} * y  (real for Hermitian Sigma)
-        log_quad = real(yf' * (Sigma \ yf));
-
-        % log|det(Sigma)| via LU decomposition
-        [~, U, ~] = lu(Sigma);
-        log_det   = sum(log(abs(diag(U))));
-
-        log_p  = -log_quad - C * log(pi) - log_det;
-        p(f)   = exp(log_p);
+        L         = chol(Sigma, 'lower');   % Sigma = L * L^H
+        v         = L \ yf;                 % v = L^{-1} * y
+        log_quad  = real(v' * v);           % y^H * Sigma^{-1} * y  (real)
+        log_det   = 2 * sum(log(abs(diag(L))));
+        log_p     = -log_quad - C * log(pi) - log_det;
+        p(f)      = exp(log_p);
     catch
-        p(f) = 0;
+        % Fall back to LU if Cholesky fails (e.g. near-singular Sigma)
+        try
+            [~, U, ~] = lu(Sigma);
+            log_quad  = real(yf' * (Sigma \ yf));
+            log_det   = sum(log(abs(diag(U))));
+            log_p     = -log_quad - C * log(pi) - log_det;
+            p(f)      = exp(log_p);
+        catch
+            p(f) = 0;
+        end
     end
 end
 
