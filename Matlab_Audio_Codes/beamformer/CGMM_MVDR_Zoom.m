@@ -59,7 +59,7 @@ F = numel(freqs);
 %   d(f,i) = exp(−j·2π·f·Δτ_i)   where Δτ_i = (||mic_i−fp|| − ||mic_1−fp||)/c
 focus_point = focus_point(:).';
 dist_abs    = sqrt(sum((mic_pos - focus_point).^2, 2));  % (N_mics,1) [m]
-delays_rel  = (dist_abs - dist_abs(1)) / c;              % (N_mics,1) [s]
+delays_rel  = (dist_abs - dist_abs(1)) / c;  % (N_mics,1) [s] – relative to mic 1; global phase is irrelevant for MVDR
 
 % D : (F, N_mics) — steering matrix
 D = exp(-1j * 2 * pi * freqs(:) * delays_rel(:).');

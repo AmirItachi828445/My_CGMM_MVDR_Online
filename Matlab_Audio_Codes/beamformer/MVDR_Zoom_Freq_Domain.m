@@ -75,7 +75,7 @@ function [enhanced_sig, best_shift] = MVDR_Zoom_Freq_Domain(data, mic_pos, targe
         
         % Compute MVDR Weights using the formula: W = (R_n^-1 * d) / (d^H * R_n^-1 * d)
         R_inv = inv(R_n_k);
-        num = R_inv \ d_k;
+        num = R_inv * d_k;
         den = d_k' * num;
         W_mvdr = num / den;
         

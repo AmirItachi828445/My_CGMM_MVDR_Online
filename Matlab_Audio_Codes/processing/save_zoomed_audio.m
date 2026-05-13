@@ -11,7 +11,7 @@ function save_zoomed_audio(results, cfg)
         filepath = fullfile(cfg.output_dir, filename);
 
         sig = real(results(i).signal);
-        sig = sig / max(abs(sig) + 1e-12);
+        sig = sig / (max(abs(sig)) + 1e-12);
         audiowrite(filepath, sig, cfg.fs);
         fprintf(' %s (method: %s, point: %s)\n', ...
             filename, results(i).beamformer, results(i).point);
