@@ -1,6 +1,6 @@
 # MATLAB CGMM-MVDR Beamformer
 
-Line-by-line MATLAB port of [`cgmm_mvdr.py`](../cgmm_mvdr.py).
+Standalone MATLAB implementation of the Online CGMM-MVDR beamformer.
 
 ## Requirements
 
@@ -16,11 +16,11 @@ MATLAB **R2019a** or later is required (`stft`/`istft` were introduced in R2019a
 | File | Description |
 |---|---|
 | `complex_gaussian.m` | Zero-mean complex Gaussian PDF — Eq. (15) in \[2\] |
-| `OnlineCGMMMVDR.m` | MATLAB class — exact port of `OnlineCGMMMVDR` in Python |
+| `OnlineCGMMMVDR.m` | MATLAB class — frame-by-frame online CGMM-MVDR |
 | `compute_steering_covariance.m` | Build prior SCMs from array geometry |
 | `cgmm_mvdr_beamform.m` | Main entry-point function `(data, mic_pos, focus_point, fs, c)` |
 | `plot_power_comparison.m` | Power spectrum + mask plots (called automatically) |
-| `run_demo.m` | Full demo: notebook replication + 4×4 array, 9 focus points |
+| `run_demo.m` | Full demo: 4×4 array, 9 focus points, two sources |
 
 ## Quick Start
 
@@ -59,27 +59,6 @@ soundsc(s_target, fs);
     'refs',    [1 2], ...   % reference microphone indices (default [1 2])
     'priorRk', R_tgt, ...   % custom target prior SCM (F,C,C)
     'priorRn', R_nse);      % custom noise  prior SCM (F,C,C)
-```
-
-## Use Pre-estimated Priors (matches Python notebook)
-
-```matlab
-% Estimate priors from training recordings (same as Python notebook)
-window = hann(200);
-[spec_tgt,   f] = stft_multichannel(s_tgt,   fs, window, 100, 200);
-[spec_noise, ~] = stft_multichannel(s_noise, fs, window, 100, 200);
-
-[~, F, T] = size(spec_tgt);
-R_tgt_prior = zeros(F, C, C, 'like', 1i);
-for f = 1:F
-    St = squeeze(spec_tgt(:, f, :));
-    R_tgt_prior(f,:,:) = (St * St') / T;
-end
-% ... similarly for R_noise_prior
-
-[s_enh, pd] = cgmm_mvdr_beamform(data, mic_pos, focus_point, fs, c, ...
-    'priorRk', R_tgt_prior, 'priorRn', R_noise_prior, ...
-    'beg_noise', 160, 'end_noise', 80);
 ```
 
 ## Output: `power_data` struct

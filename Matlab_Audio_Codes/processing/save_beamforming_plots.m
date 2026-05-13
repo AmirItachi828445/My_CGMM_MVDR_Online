@@ -4,15 +4,22 @@ function save_beamforming_plots(results, cfg)
 %
 % For every (beamformer, focus-point) pair the mean short-time energy
 % computed by process_beamforming() is converted to dB and used as the
-% signal power metric.  SNR is derived relative to the minimum energy
-% observed across all results (noise floor estimate).
+% signal power metric.  SNR is derived relative to the mean output energy
+% across all OTHER focus points — reflecting spatial zoom quality.
+%
+% Bars for focus points listed in cfg.source_points are drawn in red/dark-red
+% to mark actual source locations.  All other bars are blue.
+%
+% Power bars start at the lowest measured dB and grow upward toward the
+% maximum.  SNR bars are shown as deviations from zero (positive = source
+% direction stands out; negative = suppressed).
 %
 % Output files are written to <cfg.output_dir>/plots/:
 %   <BF_name>_spatial_response.png   – two-panel plot for one beamformer
 %   all_beamformers_comparison.png   – combined figure (2 rows × N_bf cols)
 %
 % results  Output of process_beamforming()  (struct array)
-% cfg      Configuration struct; uses cfg.output_dir
+% cfg      Configuration struct; uses cfg.output_dir and cfg.source_points
 
     plots_dir = fullfile(cfg.output_dir, 'plots');
     if ~exist(plots_dir, 'dir')
@@ -36,37 +43,46 @@ function save_beamforming_plots(results, cfg)
     end
 
     % ---- dB conversion -------------------------------------------------
-    eps_val   = 1e-12;
-    power_db  = 10 * log10(energy_mat + eps_val);
+    eps_val  = 1e-12;
+    power_db = 10 * log10(energy_mat + eps_val);
 
-    % Spatial discrimination SNR:
-    %   For each (beamformer, point) pair, SNR is defined as the ratio of
-    %   the output energy at that focus point to the mean output energy
-    %   across all other focus points.  This reflects how well the
-    %   beamformer isolates the focused direction from the rest of the
-    %   scene, which is exactly what a spatial zoom should achieve.
+    % ---- Spatial-discrimination SNR ------------------------------------
+    %   SNR(b,p) = output energy at focus p  vs  mean over all other points.
+    %   Positive = focus point stands above the background.
+    %   Negative = focus point is suppressed relative to background.
     snr_db = zeros(n_bf, n_pts);
     for b = 1:n_bf
         for p = 1:n_pts
-            focal_energy = energy_mat(b, p);
-            other_idx    = setdiff(1:n_pts, p);
+            other_idx  = setdiff(1:n_pts, p);
             if isempty(other_idx)
                 snr_db(b, p) = 0;
             else
                 mean_other = mean(energy_mat(b, other_idx));
-                snr_db(b, p) = 10 * log10((focal_energy + eps_val) / ...
-                                           (mean_other  + eps_val));
+                snr_db(b, p) = 10 * log10( ...
+                    (energy_mat(b, p) + eps_val) / (mean_other + eps_val));
             end
         end
     end
 
-    % ---- Colour map (blue bars; red/orange for the focus centre) -------
-    blue   = [0.22 0.55 0.80];
-    red    = [0.85 0.25 0.10];
+    % ---- Colour map ----------------------------------------------------
+    %   Red/dark-red for actual source locations; steel-blue for all others.
+    blue = [0.20 0.51 0.78];
+    red  = [0.80 0.15 0.10];
+
+    % Determine which focus points are source locations
+    if isfield(cfg, 'source_points') && ~isempty(cfg.source_points)
+        src_pts = cfg.source_points;
+    else
+        % Legacy fallback: highlight 'Center'
+        src_pts = {'Center'};
+    end
+
     bar_colors = repmat(blue, n_pts, 1);
-    center_idx = find(strcmpi(point_names, 'Center'), 1);
-    if ~isempty(center_idx)
-        bar_colors(center_idx, :) = red;
+    for si = 1:numel(src_pts)
+        idx = find(strcmpi(point_names, src_pts{si}), 1);
+        if ~isempty(idx)
+            bar_colors(idx, :) = red;
+        end
     end
 
     fprintf('\n Generating beamforming plots...\n');
@@ -75,27 +91,31 @@ function save_beamforming_plots(results, cfg)
     %  Individual plot per beamformer                                      %
     % ================================================================== %
     for b = 1:n_bf
-        fig = figure('Visible', 'off', 'Position', [0 0 1100 500]);
+        fig = figure('Visible', 'off', 'Position', [0 0 1000 520]);
 
-        % --- Power (dB) ---
-        ax1 = subplot(1, 2, 1);
+        % --- Power (dB) — bars grow upward (negative scale, top = 0 dB) ---
+        ax1 = subplot(2, 1, 1);
         bh1 = bar(ax1, 1:n_pts, power_db(b, :));
         bh1.FaceColor = 'flat';
         bh1.CData = bar_colors;
-        title(ax1, sprintf('%s  –  Power (dB)', bf_names{b}), ...
-            'Interpreter', 'none');
+        bh1.EdgeColor = 'none';
+        title(ax1, sprintf('\\bf%s\\rm\\newlinePower (dB)', bf_names{b}), ...
+            'Interpreter', 'tex');
         set(ax1, 'XTick', 1:n_pts, 'XTickLabel', point_names, ...
             'XTickLabelRotation', 45);
         ylabel(ax1, 'Power (dB)');
         grid(ax1, 'on');
+        ax1.YLim(2) = 0;          % top of power axis always at 0 dB
 
-        % --- SNR (dB) ---
-        ax2 = subplot(1, 2, 2);
+        % --- SNR (dB) — zero line visible; positive = source stands out ---
+        ax2 = subplot(2, 1, 2);
         bh2 = bar(ax2, 1:n_pts, snr_db(b, :));
         bh2.FaceColor = 'flat';
         bh2.CData = bar_colors;
-        title(ax2, sprintf('%s  –  SNR (dB)', bf_names{b}), ...
-            'Interpreter', 'none');
+        bh2.EdgeColor = 'none';
+        yline(ax2, 0, 'k-', 'LineWidth', 0.8);
+        title(ax2, sprintf('\\bf%s\\rm\\newlineSNR (dB)', bf_names{b}), ...
+            'Interpreter', 'tex');
         set(ax2, 'XTick', 1:n_pts, 'XTickLabel', point_names, ...
             'XTickLabelRotation', 45);
         ylabel(ax2, 'SNR (dB)');
@@ -113,29 +133,33 @@ function save_beamforming_plots(results, cfg)
     % ================================================================== %
     %  Combined comparison figure (2 rows × n_bf columns)                 %
     % ================================================================== %
-    fig_w = max(300 * n_bf, 900);
-    fig = figure('Visible', 'off', 'Position', [0 0 fig_w 800]);
+    fig_w = max(320 * n_bf, 900);
+    fig = figure('Visible', 'off', 'Position', [0 0 fig_w 820]);
 
     for b = 1:n_bf
-        % Top row – Power (dB)
+        % Top row — Power (dB)
         ax = subplot(2, n_bf, b);
         bh = bar(ax, 1:n_pts, power_db(b, :));
         bh.FaceColor = 'flat';
         bh.CData = bar_colors;
-        title(ax, sprintf('%s\nPower (dB)', bf_names{b}), ...
-            'Interpreter', 'none', 'FontSize', 8);
+        bh.EdgeColor = 'none';
+        title(ax, sprintf('\\bf%s\\rm\nPower (dB)', bf_names{b}), ...
+            'Interpreter', 'tex', 'FontSize', 8);
         set(ax, 'XTick', 1:n_pts, 'XTickLabel', point_names, ...
             'XTickLabelRotation', 45, 'FontSize', 7);
         if b == 1, ylabel(ax, 'Power (dB)'); end
+        ax.YLim(2) = 0;
         grid(ax, 'on');
 
-        % Bottom row – SNR (dB)
+        % Bottom row — SNR (dB)
         ax2 = subplot(2, n_bf, n_bf + b);
         bh2 = bar(ax2, 1:n_pts, snr_db(b, :));
         bh2.FaceColor = 'flat';
         bh2.CData = bar_colors;
-        title(ax2, sprintf('%s\nSNR (dB)', bf_names{b}), ...
-            'Interpreter', 'none', 'FontSize', 8);
+        bh2.EdgeColor = 'none';
+        yline(ax2, 0, 'k-', 'LineWidth', 0.8);
+        title(ax2, sprintf('\\bf%s\\rm\nSNR (dB)', bf_names{b}), ...
+            'Interpreter', 'tex', 'FontSize', 8);
         set(ax2, 'XTick', 1:n_pts, 'XTickLabel', point_names, ...
             'XTickLabelRotation', 45, 'FontSize', 7);
         if b == 1, ylabel(ax2, 'SNR (dB)'); end
