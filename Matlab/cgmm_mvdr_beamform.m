@@ -96,15 +96,62 @@ cgmm = OnlineCGMMMVDR(opts.ny_k, opts.ny_n, ...
     N_mics, F, opts.beg_noise, opts.end_noise);
 
 % ---------- frame-by-frame (online) processing ----------
-spec_enh = zeros(2, F, T_frames, 'like', 1+1i);
+% Accumulate mask-weighted noise SCM alongside the CGMM state so that
+% the final MVDR step can use it with the explicit steering vector.
+Phi_n    = zeros(F, N_mics, N_mics, 'like', 1+1i);
 masks    = zeros(T_frames, F);
 
 for t = 1:T_frames
-    y_t = spec_all(:, :, t);            % (N_mics, F)
-    [s_out, mask_t] = cgmm.step(y_t, t, T_frames);
-    spec_enh(1, :, t) = s_out{1};       % ref-mic-1 beamformer
-    spec_enh(2, :, t) = s_out{2};       % ref-mic-2 beamformer
-    masks(t, :)       = mask_t';
+    y_t    = spec_all(:, :, t);              % (N_mics, F)
+    [~, mask_t] = cgmm.step(y_t, t, T_frames);
+    lam_kn = mask_t;                         % (F,1) target mask
+    lam_n  = 1 - lam_kn;                    % (F,1) noise  mask
+    masks(t, :) = lam_kn.';
+    % Accumulate noise-mask-weighted SCM for steering-vector MVDR
+    for fq = 1:F
+        yf = y_t(:, fq);
+        Phi_n(fq,:,:) = squeeze(Phi_n(fq,:,:)) + lam_n(fq) * (yf * yf');
+    end
+end
+
+% ---------- steering-vector MVDR weights --------------------------------
+% Build relative-delay steering vector toward focus_point.
+focus_point_row = focus_point(:).';
+dist_abs    = sqrt(sum((mic_pos - focus_point_row).^2, 2));
+delays_rel  = (dist_abs - dist_abs(1)) / c;                 % relative to mic 1
+D_steer     = exp(-1j * 2 * pi * freqs(:) * delays_rel(:).');  % (F, N_mics)
+
+reg_diag = 1e-3;
+W        = zeros(F, N_mics, 'like', 1+1i);
+for fq = 1:F
+    Pn_f = squeeze(Phi_n(fq,:,:));
+    tr_v = max(real(trace(Pn_f)), 1e-20);
+    Pn_f = Pn_f + reg_diag * tr_v * eye(N_mics);
+    d_f  = D_steer(fq,:).';
+    try
+        Pn_inv_d = Pn_f \ d_f;
+    catch
+        Pn_inv_d = pinv(Pn_f) * d_f;
+    end
+    denom = real(d_f' * Pn_inv_d);
+    if denom < 1e-20
+        W(fq,:) = d_f.' / N_mics;
+    else
+        W(fq,:) = (Pn_inv_d / denom).';
+    end
+end
+
+% ---------- apply beamformer -------------------------------------------
+spec_enh = zeros(2, F, T_frames, 'like', 1+1i);
+refs     = opts.refs;
+for t = 1:T_frames
+    y_t = spec_all(:, :, t);
+    for fq = 1:F
+        spec_enh(1, fq, t) = conj(W(fq,:))  * y_t(:, fq);
+    end
+    % Second output: beamformer steered using ref mic 2 for power
+    % comparison — here we just return the same filter (single-beam output)
+    spec_enh(2, :, t) = spec_enh(1, :, t);
 end
 
 % ---------- power comparison (before normalisation) ----------
